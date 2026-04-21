@@ -31,10 +31,11 @@ function vehiclesToGeoJSON(vehicles: TransitVehicle[]): GeoJSON.FeatureCollectio
 interface TransitLayerProps {
   map: maplibregl.Map;
   vehicles: TransitVehicle[];
-  visible: boolean;
+  busVisible: boolean;
+  trainVisible: boolean;
 }
 
-export default function TransitLayer({ map, vehicles, visible }: TransitLayerProps) {
+export default function TransitLayer({ map, vehicles, busVisible, trainVisible }: TransitLayerProps) {
   const popupRef = useRef<maplibregl.Popup | null>(null);
 
   // Initialize source and layers once
@@ -114,11 +115,17 @@ export default function TransitLayer({ map, vehicles, visible }: TransitLayerPro
       popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '200px' })
         .setLngLat(coords)
         .setHTML(
-          `<div class="text-sm font-sans">
-            <p class="font-semibold">Route ${props.route || '—'}</p>
-            <p class="text-gray-500">Vehicle ${props.label}</p>
-            <p>${props.speedMph} mph · ${props.bearing}°</p>
-            <p class="text-xs text-gray-400 mt-1">Near-real-time · ~20s lag</p>
+          `<div class="text-sm font-sans" style="min-width:140px">
+            ${props.route
+              ? `<p class="font-semibold" style="color:#f59e0b">Route ${props.route}</p>`
+              : `<p class="font-semibold" style="color:#9ca3af">No route assigned</p>`
+            }
+            <p style="color:#9ca3af;font-size:11px">Vehicle ${props.label}</p>
+            ${props.speedMph > 0
+              ? `<p style="margin-top:4px">${props.speedMph} mph · ${props.bearing}°</p>`
+              : `<p style="margin-top:4px;color:#9ca3af">Stopped</p>`
+            }
+            <p style="font-size:10px;color:#6b7280;margin-top:6px">Near-real-time · ~20s lag</p>
           </div>`
         )
         .addTo(map);
@@ -142,14 +149,18 @@ export default function TransitLayer({ map, vehicles, visible }: TransitLayerPro
     source?.setData(vehiclesToGeoJSON(vehicles));
   }, [map, vehicles]);
 
-  // Toggle layer visibility
+  // Toggle layer visibility independently
   useEffect(() => {
-    const vis = visible ? 'visible' : 'none';
-    const layers = [BUS_LAYER_ID, TRAIN_LAYER_ID, 'transit-clusters', 'transit-cluster-count'];
-    layers.forEach((id) => {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
-    });
-  }, [map, visible]);
+    if (map.getLayer(BUS_LAYER_ID))
+      map.setLayoutProperty(BUS_LAYER_ID, 'visibility', busVisible ? 'visible' : 'none');
+    if (map.getLayer('transit-clusters'))
+      map.setLayoutProperty('transit-clusters', 'visibility', (busVisible || trainVisible) ? 'visible' : 'none');
+  }, [map, busVisible, trainVisible]);
+
+  useEffect(() => {
+    if (map.getLayer(TRAIN_LAYER_ID))
+      map.setLayoutProperty(TRAIN_LAYER_ID, 'visibility', trainVisible ? 'visible' : 'none');
+  }, [map, trainVisible]);
 
   return null; // renders via MapLibre, not React DOM
 }

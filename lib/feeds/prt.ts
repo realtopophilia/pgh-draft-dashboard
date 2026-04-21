@@ -42,8 +42,8 @@ async function fetchFeed(url: string, type: VehicleType): Promise<TransitVehicle
         bearing: pos.bearing ?? 0,
         speed: speedMs,
         speedMph: Math.round(speedMs * 2.237),
-        route: veh.trip?.routeId ?? '',
-        label: veh.vehicle?.label ?? e.id,
+        route: veh.trip?.routeId || '',
+        label: veh.vehicle?.label || veh.vehicle?.id || e.id,
         // protobuf Long → number
         timestamp: typeof veh.timestamp === 'object'
           ? (veh.timestamp as { low: number }).low
