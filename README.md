@@ -3,7 +3,52 @@
 Near-real-time civic dashboard for the **2026 NFL Draft in Pittsburgh (April 23–25)**.  
 Live at **[pgh-draft-dashboard.vercel.app](https://pgh-draft-dashboard.vercel.app)**
 
-Audience: locals, press, and data-curious civic folks. City-wide view, not just the stadium.
+---
+
+## What this is
+
+The NFL Draft is coming to Pittsburgh April 23–25, 2026. Hundreds of thousands of people will move through the city over three days — by bus, light rail, car, bike, and on foot. City services will be strained. Parking will be chaotic. The rivers will be there regardless.
+
+This dashboard is a **city-wide near-real-time civic data view** built for the duration of the event. It's not a fan app or an NFL product — it's a public-interest tool that pulls together the data feeds Pittsburgh already publishes (transit, traffic, parking, weather, river levels) and puts them on one map.
+
+**Audience:** locals trying to get around, press covering the event, and data-curious civic folks who want to see what's actually happening across the city — not just at the stadium.
+
+**Framing:** Near-real-time, always. This dashboard shows where things are right now, with honest labels on how stale each feed is.
+
+---
+
+## Original project spec
+
+> **STACK (committed):**
+> - Next.js 15 App Router, TypeScript, deploying to Vercel
+> - Tailwind + shadcn/ui
+> - MapLibre GL JS + Protomaps (self-hosted PMTiles, no API key)
+> - TanStack Query for polling
+> - gtfs-realtime-bindings for protobuf
+> - Recharts for side panels
+>
+> **FRAMING:** Use "near-real-time" everywhere, never "real-time." Every data feed's refresh cadence should be visible on the Data Provenance page and in layer tooltips.
+>
+> **GEOGRAPHIC BOUNDS (City of Pittsburgh proper):**
+> ```
+> SW: 40.358, -80.095
+> NE: 40.501, -79.865
+> ```
+>
+> **DATA SOURCES (verified):**
+> - PRT vehicles: `https://truetime.portauthority.org/gtfsrt-bus/` (20s poll)
+> - PRT trains: `https://truetime.portauthority.org/gtfsrt-train/` (20s poll)
+> - PennDOT 511PA: pa.511.org dev key — speeds, incidents, cameras (30s poll)
+> - Traffic cameras: from 511PA feed — JPG stills refreshing ~30s
+> - POGOH GBFS: verify URL first; fallback scrape pogoh.com (15s poll)
+> - ParkPGH garages: parkpgh.org — find JSON or scrape (30s poll)
+> - NWS weather: api.weather.gov/gridpoints/PBZ/… (10min poll)
+> - USGS river gauges: waterservices.usgs.gov/nwis/iv (15min poll)
+>
+> **ARCHITECTURE:**
+> Browser → polls Next.js API routes → external feeds. All external calls go through our API routes for CORS, edge caching, and a stable JSON contract.
+>
+> **TRAFFIC CAMERAS:** clicking a camera icon opens a modal with the live JPG, refreshing every 30 seconds. The modal shows camera name, route, and direction. Optional /cameras page tiles 6–12 cams at once for a "situation room" view.
 
 ---
 
@@ -91,11 +136,11 @@ components/
 ## What to build next (priority order for Wednesday deploy)
 
 1. **Weather widget** — NWS endpoint verified, just needs an API route + side panel component
-2. **River gauges** — USGS endpoint verified, needs API route + gauge widget with flood stage context  
+2. **River gauges** — USGS endpoint verified, needs API route + gauge widget with flood stage context
 3. **ParkPGH garages** — map dots + panel, endpoint TBD
 4. **POGOH bikeshare** — map dots + panel, endpoint TBD
 5. **511PA traffic** — speed/incident layer
-6. **Traffic cameras** — camera icon on map → modal with live JPG refreshing every 30s
+6. **Traffic cameras** — camera icon on map → modal with live JPG refreshing every 30s; optional `/cameras` situation room page
 7. **Pressure Index** — composite crowd signal from transit + parking + weather
 8. **Data Provenance page** — `/about` listing all sources and refresh cadences
 
