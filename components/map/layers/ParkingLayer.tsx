@@ -8,11 +8,15 @@ import type { ParkingGarage } from '@/lib/feeds/parkpgh';
 const SOURCE_ID = 'parking-garages';
 const LAYER_ID  = 'parking-garages-layer';
 
-const COLOR_MAP: Record<string, string> = {
-  green:  '#22c55e',
-  yellow: '#eab308',
-  red:    '#ef4444',
-};
+// Green (empty) → yellow → orange → red (full). Closed = grey.
+function garageColor(g: ParkingGarage): string {
+  if (g.state === 'closed') return '#6b7280';
+  const pct = g.percentFull;
+  if (pct >= 90) return '#ef4444'; // red   — nearly full
+  if (pct >= 70) return '#f97316'; // orange
+  if (pct >= 45) return '#eab308'; // yellow
+  return '#22c55e';                // green  — plenty of space
+}
 
 function garagesToGeoJSON(garages: ParkingGarage[]): GeoJSON.FeatureCollection {
   return {
@@ -27,8 +31,7 @@ function garagesToGeoJSON(garages: ParkingGarage[]): GeoJSON.FeatureCollection {
         percentAvailable: g.percentAvailable,
         state:            g.state,
         displaySpaces:    g.displaySpaces,
-        // resolve color to hex so MapLibre paint can use it directly
-        hexColor: COLOR_MAP[g.color] ?? '#22c55e',
+        hexColor:         garageColor(g),
       },
     })),
   };
