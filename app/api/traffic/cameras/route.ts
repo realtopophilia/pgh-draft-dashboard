@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
-import { PITTSBURGH_CAMERAS } from '@/lib/feeds/traffic511';
-
-// Camera list is static — just return the curated Pittsburgh list.
-// Refresh cadence: ~30s for the images themselves (handled client-side).
+import { fetchAllCameras } from '@/lib/feeds/cameras';
+ 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+ 
 export async function GET() {
-  return NextResponse.json(
-    { cameras: PITTSBURGH_CAMERAS },
-    { headers: { 'Cache-Control': 'public, s-maxage=3600' } }
-  );
+  try {
+    const cameras = await fetchAllCameras();
+    return NextResponse.json(
+      { cameras, fetchedAt: Date.now() },
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
+    );
+  } catch (err) {
+    console.error('[traffic/cameras]', err);
+    return NextResponse.json({ error: 'Failed to fetch cameras' }, { status: 502 });
+  }
 }
+ 
