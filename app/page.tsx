@@ -5,21 +5,22 @@ import dynamic from 'next/dynamic';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import maplibregl from 'maplibre-gl';
 import type { TransitVehicle } from '@/lib/feeds/prt';
-import type { ParkingGarage } from '@/lib/feeds/parkpgh';
 import type { WeatherData } from '@/lib/feeds/nws';
 import type { Incident } from '@/lib/feeds/traffic511';
 import type { TrafficCamera } from '@/lib/feeds/cameras';
+import type { ParkingGarage } from '@/lib/feeds/parkpgh';
 import { Badge } from '@/components/ui/badge';
 
 const DraftMap     = dynamic(() => import('@/components/map/DraftMap'), { ssr: false });
 const TransitLayer = dynamic(() => import('@/components/map/layers/TransitLayer'), { ssr: false });
-const ParkingLayer = dynamic(() => import('@/components/map/layers/ParkingLayer'), { ssr: false });
 const TrafficLayer = dynamic(() => import('@/components/map/layers/TrafficLayer'), { ssr: false });
 const CameraLayer  = dynamic(() => import('@/components/map/layers/CameraLayer'), { ssr: false });
+const ParkingLayer = dynamic(() => import('@/components/map/layers/ParkingLayer'), { ssr: false });
 
 interface VehiclesResponse  { vehicles: TransitVehicle[]; fetchedAt: number; }
 interface IncidentsResponse { incidents: Incident[];       fetchedAt: number; }
 interface CamerasResponse   { cameras: TrafficCamera[];    fetchedAt: number; }
+interface ParkingResponse   { garages: ParkingGarage[];    fetchedAt: number; }
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,7 @@ function Dashboard() {
   const [trainVisible,     setTrainVisible]     = useState(true);
   const [incidentsVisible, setIncidentsVisible] = useState(true);
   const [cameraVisible,    setCameraVisible]    = useState(true);
+  const [parkingVisible,   setParkingVisible]   = useState(true);
 
   const { data: transitData, isError: transitError } = useQuery<VehiclesResponse>({
     queryKey: ['transit-vehicles'],
@@ -111,23 +113,20 @@ function Dashboard() {
     staleTime:       590_000,
   });
 
-  const [parkingVisible, setParkingVisible] = useState(true);
-
-  const { data: parkingData } = useQuery<{ garages: ParkingGarage[]; fetchedAt: number }>({
+  const { data: parkingData } = useQuery<ParkingResponse>({
     queryKey: ['parking'],
     queryFn:  () => fetch('/api/parking').then(r => r.json()),
     refetchInterval: 30_000,
     staleTime:       28_000,
   });
 
-const garages = parkingData?.garages ?? [];
-
   const handleMapReady = useCallback((m: maplibregl.Map) => setMap(m), []);
 
   const vehicles = transitData?.vehicles ?? [];
-  const buses  = vehicles.filter(v => v.type === 'bus');
-  const trains = vehicles.filter(v => v.type === 'train');
-  const cameras = cameraData?.cameras ?? [];
+  const buses    = vehicles.filter(v => v.type === 'bus');
+  const trains   = vehicles.filter(v => v.type === 'train');
+  const cameras  = cameraData?.cameras ?? [];
+  const garages  = parkingData?.garages ?? [];
 
   const lastUpdate = transitData?.fetchedAt
     ? new Date(transitData.fetchedAt).toLocaleTimeString('en-US',
@@ -178,15 +177,14 @@ const garages = parkingData?.garages ?? [];
               visible={cameraVisible}
             />
           )}
-
           {map && (
-          <ParkingLayer 
-            map={map} 
-            garages={garages} 
-            visible={parkingVisible} 
+            <ParkingLayer
+              map={map}
+              garages={garages}
+              visible={parkingVisible}
             />
           )}
-          </div>
+        </div>
 
         {/* Side panel */}
         <aside className="w-56 shrink-0 bg-gray-900 border-l border-gray-800 flex flex-col p-3 gap-3 overflow-y-auto">
@@ -263,7 +261,9 @@ const garages = parkingData?.garages ?? [];
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Garages open</span>
-                <span className="font-mono text-green-400">{garages.filter(g => g.state === 'open').length}</span>
+                <span className="font-mono text-green-400">
+                  {garages.filter(g => g.state === 'open').length}
+                </span>
               </div>
             </div>
           </section>
@@ -280,7 +280,7 @@ const garages = parkingData?.garages ?? [];
               Incidents: 511PA · 30s<br />
               Cameras: 511PA · JPG ~60s<br />
               Weather: NWS KPIT · 10 min<br />
-              Parking: ParkPGH · 30s<br />
+              Parking: ParkPGH · 30s
             </p>
           </section>
         </aside>
