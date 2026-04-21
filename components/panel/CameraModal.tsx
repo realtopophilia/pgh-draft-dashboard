@@ -1,23 +1,23 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import type { Camera } from '@/lib/feeds/traffic511';
+import type { TrafficCamera } from '@/lib/feeds/cameras';
 
 interface CameraModalProps {
-  camera: Camera;
+  camera: TrafficCamera;
   onClose: () => void;
 }
 
 export default function CameraModal({ camera, onClose }: CameraModalProps) {
   const [imgSrc, setImgSrc] = useState(() =>
-    `/api/traffic/cameras/${camera.id}/image`
+    `${camera.imageUrl}?t=${Date.now()}`
   );
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   const refresh = useCallback(() => {
-    setImgSrc(`/api/traffic/cameras/${camera.id}/image?t=${Date.now()}`);
+    setImgSrc(`${camera.imageUrl}?t=${Date.now()}`);
     setLastRefresh(new Date());
-  }, [camera.id]);
+  }, [camera.imageUrl]);
 
   // Refresh image every 30 seconds
   useEffect(() => {
@@ -44,8 +44,10 @@ export default function CameraModal({ camera, onClose }: CameraModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <div>
-            <p className="text-sm font-semibold text-white">{camera.name}</p>
-            <p className="text-xs text-gray-400">{camera.road} · {camera.direction}</p>
+            <p className="text-sm font-semibold text-white">{camera.location}</p>
+            <p className="text-xs text-gray-400">
+              {camera.roadway}{camera.direction ? ` · ${camera.direction}` : ''}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -57,7 +59,7 @@ export default function CameraModal({ camera, onClose }: CameraModalProps) {
         <div className="relative bg-black aspect-video">
           <img
             src={imgSrc}
-            alt={`Traffic camera: ${camera.name}`}
+            alt={`Traffic camera: ${camera.location}`}
             className="w-full h-full object-contain"
             onError={() => setImgSrc('/camera-error.svg')}
           />
@@ -79,3 +81,4 @@ export default function CameraModal({ camera, onClose }: CameraModalProps) {
     </div>
   );
 }
+
