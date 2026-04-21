@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import maplibregl from 'maplibre-gl';
 import type { TransitVehicle } from '@/lib/feeds/prt';
+import type { ParkingGarage } from '@/lib/feeds/parkpgh';
 import type { WeatherData } from '@/lib/feeds/nws';
 import type { Incident } from '@/lib/feeds/traffic511';
 import type { TrafficCamera } from '@/lib/feeds/cameras';
@@ -12,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 
 const DraftMap     = dynamic(() => import('@/components/map/DraftMap'), { ssr: false });
 const TransitLayer = dynamic(() => import('@/components/map/layers/TransitLayer'), { ssr: false });
+const ParkingLayer = dynamic(() => import('@/components/map/layers/ParkingLayer'), { ssr: false });
 const TrafficLayer = dynamic(() => import('@/components/map/layers/TrafficLayer'), { ssr: false });
 const CameraLayer  = dynamic(() => import('@/components/map/layers/CameraLayer'), { ssr: false });
 
@@ -109,6 +111,17 @@ function Dashboard() {
     staleTime:       590_000,
   });
 
+  const [parkingVisible, setParkingVisible] = useState(true);
+
+  const { data: parkingData } = useQuery<{ garages: ParkingGarage[]; fetchedAt: number }>({
+    queryKey: ['parking'],
+    queryFn:  () => fetch('/api/parking').then(r => r.json()),
+    refetchInterval: 30_000,
+    staleTime:       28_000,
+  });
+
+const garages = parkingData?.garages ?? [];
+
   const handleMapReady = useCallback((m: maplibregl.Map) => setMap(m), []);
 
   const vehicles = transitData?.vehicles ?? [];
@@ -165,7 +178,15 @@ function Dashboard() {
               visible={cameraVisible}
             />
           )}
-        </div>
+
+          {map && (
+          <ParkingLayer 
+            map={map} 
+            garages={garages} 
+            visible={parkingVisible} 
+            />
+          )}
+          </div>
 
         {/* Side panel */}
         <aside className="w-56 shrink-0 bg-gray-900 border-l border-gray-800 flex flex-col p-3 gap-3 overflow-y-auto">
@@ -211,6 +232,15 @@ function Dashboard() {
                 Traffic Cams
               </span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
+              <input type="checkbox" checked={parkingVisible}
+                onChange={e => setParkingVisible(e.target.checked)}
+                className="accent-green-400" />
+              <span className="text-sm">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />
+                Parking
+              </span>
+            </label>
           </section>
 
           {/* Live counts */}
@@ -231,6 +261,10 @@ function Dashboard() {
                 <span className="text-gray-400">Traffic cams</span>
                 <span className="font-mono text-emerald-400">{cameras.length}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Garages open</span>
+                <span className="font-mono text-green-400">{garages.filter(g => g.state === 'open').length}</span>
+              </div>
             </div>
           </section>
 
@@ -245,7 +279,8 @@ function Dashboard() {
               Transit: TrueTime GTFS-RT · 20s<br />
               Incidents: 511PA · 30s<br />
               Cameras: 511PA · JPG ~60s<br />
-              Weather: NWS KPIT · 10 min
+              Weather: NWS KPIT · 10 min<br />
+              Parking: ParkPGH · 30s<br />
             </p>
           </section>
         </aside>
