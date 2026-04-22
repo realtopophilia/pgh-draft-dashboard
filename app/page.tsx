@@ -13,6 +13,7 @@ import type { BikeStation } from '@/lib/feeds/pogoh';
 import type { Complaint } from '@/lib/feeds/wprdc311';
 import type { NewsItem } from '@/lib/feeds/news';
 import { Badge } from '@/components/ui/badge';
+import ScheduleWidget from '@/components/panel/ScheduleWidget';
 
 const DraftMap          = dynamic(() => import('@/components/map/DraftMap'), { ssr: false });
 const TransitLayer      = dynamic(() => import('@/components/map/layers/TransitLayer'), { ssr: false });
@@ -21,6 +22,7 @@ const CameraLayer       = dynamic(() => import('@/components/map/layers/CameraLa
 const ParkingLayer      = dynamic(() => import('@/components/map/layers/ParkingLayer'), { ssr: false });
 const BikeShareLayer    = dynamic(() => import('@/components/map/layers/BikeShareLayer'), { ssr: false });
 const ThreeOneOneLayer  = dynamic(() => import('@/components/map/layers/ThreeOneOneLayer'), { ssr: false });
+const CampusLayer       = dynamic(() => import('@/components/map/layers/CampusLayer'), { ssr: false });
 
 interface VehiclesResponse   { vehicles:   TransitVehicle[]; fetchedAt: number; }
 interface IncidentsResponse  { incidents:  Incident[];        fetchedAt: number; }
@@ -122,6 +124,7 @@ function Dashboard() {
   const [parkingVisible,    setParkingVisible]    = useState(true);
   const [bikeVisible,       setBikeVisible]       = useState(true);
   const [threeOneOneVisible, setThreeOneOneVisible] = useState(true);
+  const [campusVisible,     setCampusVisible]     = useState(true);
 
   const { data: transitData, isError: transitError } = useQuery<VehiclesResponse>({
     queryKey: ['transit-vehicles'],
@@ -208,6 +211,7 @@ function Dashboard() {
           {map && <ParkingLayer map={map} garages={garages} visible={parkingVisible} />}
           {map && <BikeShareLayer map={map} stations={stations} visible={bikeVisible} />}
           {map && <ThreeOneOneLayer map={map} complaints={complaints} visible={threeOneOneVisible} />}
+          {map && <CampusLayer map={map} visible={campusVisible} />}
         </div>
 
         {/* Side panel */}
@@ -224,6 +228,7 @@ function Dashboard() {
               { label: 'Parking',      color: 'bg-green-500',  accent: 'accent-green-400',   checked: parkingVisible,      onChange: setParkingVisible },
               { label: 'POGOH Bikes',  color: 'bg-cyan-400',   accent: 'accent-cyan-400',    checked: bikeVisible,         onChange: setBikeVisible },
               { label: '311 Reports',  color: 'bg-amber-400',  accent: 'accent-yellow-400',  checked: threeOneOneVisible,  onChange: setThreeOneOneVisible },
+              { label: 'Draft Campus', color: 'bg-yellow-300', accent: 'accent-yellow-300',  checked: campusVisible,       onChange: setCampusVisible },
             ].map(({ label, color, accent, checked, onChange }) => (
               <label key={label} className="flex items-center gap-2 cursor-pointer select-none mt-1 first:mt-0">
                 <input type="checkbox" checked={checked}
@@ -270,6 +275,9 @@ function Dashboard() {
             </div>
           </section>
 
+          {/* Draft Schedule */}
+          <ScheduleWidget />
+
           {/* Weather */}
           {weatherData && !('error' in weatherData) && (
             <WeatherWidget data={weatherData} />
@@ -288,7 +296,8 @@ function Dashboard() {
               Parking: ParkPGH · 30s<br />
               Bikes: POGOH GBFS · 15s<br />
               311: WPRDC · 60s<br />
-              News: WPXI/TribLive · 5 min
+              News: WPXI/TribLive · 5 min<br />
+              Campus: static · NFL.com
             </p>
           </section>
         </aside>
