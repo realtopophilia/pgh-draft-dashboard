@@ -12,6 +12,7 @@ import type { ParkingGarage } from '@/lib/feeds/parkpgh';
 import type { BikeStation } from '@/lib/feeds/pogoh';
 import type { Complaint } from '@/lib/feeds/wprdc311';
 import type { NewsItem } from '@/lib/feeds/news';
+import type { SocialPost } from '@/lib/feeds/social';
 import { Badge } from '@/components/ui/badge';
 import ScheduleWidget from '@/components/panel/ScheduleWidget';
 
@@ -31,6 +32,7 @@ interface ParkingResponse    { garages:    ParkingGarage[];   fetchedAt: number;
 interface BikeShareResponse  { stations:   BikeStation[];     fetchedAt: number; }
 interface ComplaintsResponse { complaints: Complaint[];       fetchedAt: number; }
 interface NewsResponse       { items:      NewsItem[];         fetchedAt: number; }
+interface SocialResponse     { posts:      SocialPost[];       fetchedAt: number; }
 
 const queryClient = new QueryClient();
 
@@ -114,6 +116,53 @@ function NewsPanel({ items }: { items: NewsItem[] }) {
   );
 }
 
+function SocialPanel({ posts }: { posts: SocialPost[] }) {
+  if (!posts.length) return null;
+
+  const PLATFORM_META = {
+    bluesky: { label: 'Bluesky', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)' },
+    reddit:  { label: 'Reddit',  color: '#fb923c', bg: 'rgba(251,146,60,0.1)'  },
+  };
+
+  return (
+    <section className="border-t border-gray-800 pt-3">
+      <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">
+        Social · Live Posts
+      </h2>
+      <div className="space-y-2">
+        {posts.slice(0, 10).map((post) => {
+          const meta = PLATFORM_META[post.platform];
+          return (
+            <a
+              key={post.id}
+              href={post.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block group rounded px-2 py-1.5 transition-colors hover:bg-gray-800"
+              style={{ background: meta.bg }}
+            >
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-xs font-semibold" style={{ color: meta.color }}>
+                  {meta.label}
+                </span>
+                <span className="text-xs text-gray-500 truncate">{post.handle}</span>
+              </div>
+              <p className="text-xs text-gray-300 leading-tight line-clamp-3 group-hover:text-white transition-colors">
+                {post.text}
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">
+                {post.author} · {timeAgo(post.publishedAt)}
+                {post.likes > 0 && ` · ♥ ${post.likes}`}
+              </p>
+            </a>
+          );
+        })}
+      </div>
+      <p className="text-xs text-gray-700 mt-2">Bluesky · Reddit · ~60s</p>
+    </section>
+  );
+}
+
 // ── main dashboard ─────────────────────────────────────────────────────────
 function Dashboard() {
   const [map, setMap] = useState<maplibregl.Map | null>(null);
@@ -166,6 +215,11 @@ function Dashboard() {
     queryFn:  () => fetch('/api/news').then(r => r.json()),
     refetchInterval: 300_000, staleTime: 290_000,
   });
+  const { data: socialData } = useQuery<SocialResponse>({
+    queryKey: ['social'],
+    queryFn:  () => fetch('/api/social').then(r => r.json()),
+    refetchInterval: 60_000, staleTime: 55_000,
+  });
 
   const handleMapReady = useCallback((m: maplibregl.Map) => setMap(m), []);
 
@@ -177,6 +231,7 @@ function Dashboard() {
   const stations   = bikeData?.stations      ?? [];
   const complaints = complaintsData?.complaints ?? [];
   const newsItems  = newsData?.items         ?? [];
+  const socialPosts = socialData?.posts      ?? [];
 
   const lastUpdate = transitData?.fetchedAt
     ? new Date(transitData.fetchedAt).toLocaleTimeString('en-US',
@@ -283,6 +338,9 @@ function Dashboard() {
             <WeatherWidget data={weatherData} />
           )}
 
+          {/* Social */}
+          <SocialPanel posts={socialPosts} />
+
           {/* News */}
           <NewsPanel items={newsItems} />
 
@@ -296,7 +354,8 @@ function Dashboard() {
               Parking: ParkPGH · 30s<br />
               Bikes: POGOH GBFS · 15s<br />
               311: WPRDC · 60s<br />
-              News: WPXI/TribLive · 5 min<br />
+              News: WPXI/TribLive · 5 min (draft only)<br />
+              Social: Bluesky/Reddit · 60s<br />
               Campus: static · NFL.com
             </p>
           </section>
