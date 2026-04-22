@@ -10,7 +10,6 @@ import type { Incident }       from '@/lib/feeds/traffic511';
 import type { TrafficCamera }  from '@/lib/feeds/cameras';
 import type { ParkingGarage }  from '@/lib/feeds/parkpgh';
 import type { BikeStation }    from '@/lib/feeds/pogoh';
-import type { Complaint }      from '@/lib/feeds/wprdc311';
 import type { NewsItem }       from '@/lib/feeds/news';
 import type { SocialPost }     from '@/lib/feeds/social';
 import ScheduleWidget          from '@/components/panel/ScheduleWidget';
@@ -21,7 +20,6 @@ const TrafficLayer     = dynamic(() => import('@/components/map/layers/TrafficLa
 const CameraLayer      = dynamic(() => import('@/components/map/layers/CameraLayer'),          { ssr: false });
 const ParkingLayer     = dynamic(() => import('@/components/map/layers/ParkingLayer'),         { ssr: false });
 const BikeShareLayer   = dynamic(() => import('@/components/map/layers/BikeShareLayer'),       { ssr: false });
-const ThreeOneOneLayer = dynamic(() => import('@/components/map/layers/ThreeOneOneLayer'),     { ssr: false });
 const CampusLayer        = dynamic(() => import('@/components/map/layers/CampusLayer'),          { ssr: false });
 const TimelapseCapture   = dynamic(() => import('@/components/timelapse/TimelapseCapture'),     { ssr: false });
 
@@ -30,7 +28,6 @@ interface IncidentsResponse  { incidents:  Incident[];        fetchedAt: number;
 interface CamerasResponse    { cameras:    TrafficCamera[];   fetchedAt: number; }
 interface ParkingResponse    { garages:    ParkingGarage[];   fetchedAt: number; }
 interface BikeShareResponse  { stations:   BikeStation[];     fetchedAt: number; }
-interface ComplaintsResponse { complaints: Complaint[];       fetchedAt: number; }
 interface NewsResponse       { items:      NewsItem[];         fetchedAt: number; }
 interface SocialResponse     { posts:      SocialPost[];       fetchedAt: number; }
 
@@ -49,7 +46,7 @@ function distKm(a: [number,number], b: [number,number]) {
   const dy = (b[1]-a[1]) * 110.574;
   return Math.sqrt(dx*dx + dy*dy);
 }
-const FOOTPRINTS: [number,number][] = [[-80.0080,40.4470],[-80.0125,40.4415]];
+const FOOTPRINTS: [number,number][] = [[-80.0106,40.4470],[-80.0075,40.4410]];
 function inFootprint(lon: number, lat: number) {
   return FOOTPRINTS.some(c => distKm([lon,lat], c) <= 0.65);
 }
@@ -179,7 +176,6 @@ const ABOUT_SOURCES = [
   { layer:'Traffic Cameras', source:'PennDOT 511PA · JPG stills',              cadence:'60 s' },
   { layer:'Parking Garages', source:'ParkPGH availability',                   cadence:'30 s' },
   { layer:'POGOH Bikes',     source:'POGOH GBFS v3',                          cadence:'15 s' },
-  { layer:'311 Reports',     source:'WPRDC open data · citizen-submitted',    cadence:'60 s' },
   { layer:'Weather',         source:'National Weather Service · KPIT',        cadence:'10 min' },
   { layer:'News',            source:'WPXI · TribLive · draft keywords filter', cadence:'5 min' },
   { layer:'Social',          source:'Bluesky AT Protocol · Reddit JSON API',  cadence:'60 s' },
@@ -190,36 +186,46 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
+        {/* Header */}
         <div style={{
-          padding:'16px 22px', borderBottom:'1px solid var(--line)',
-          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0,
+          padding:'20px 24px 16px', borderBottom:'1px solid var(--line)', flexShrink:0,
         }}>
-          <div>
-            <div className="font-space" style={{ fontSize:10, letterSpacing:'.16em', color:'var(--ink-mute)', textTransform:'uppercase', fontWeight:600 }}>
-              Data provenance
+          <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:12 }}>
+            <svg width="36" height="36" viewBox="0 0 34 34">
+              <rect x="1" y="1" width="32" height="32" rx="6" fill="#1A1814" stroke="var(--gold)" strokeWidth="1.2"/>
+              <path d="M9 23 L17 9 L25 23 Z" fill="none" stroke="var(--gold)" strokeWidth="1.4" strokeLinejoin="round"/>
+              <circle cx="17" cy="18" r="2.2" fill="var(--gold)"/>
+            </svg>
+            <div>
+              <div className="font-space" style={{ fontSize:10, letterSpacing:'.16em', color:'var(--ink-mute)', textTransform:'uppercase', fontWeight:600 }}>
+                2026 NFL Draft · Pittsburgh
+              </div>
+              <h2 className="font-space" style={{ fontSize:22, color:'var(--ink)', margin:'3px 0 0', fontWeight:700, lineHeight:1.2 }}>
+                Pittsburgh Draft Dashboard
+              </h2>
             </div>
-            <h2 className="font-space" style={{ fontSize:20, color:'var(--ink)', margin:'4px 0 0', fontWeight:600 }}>
-              How this dashboard works
-            </h2>
           </div>
-          <button
-            onClick={onClose}
-            style={{ fontFamily:'inherit', border:'1px solid var(--line)', background:'var(--bg-2)', color:'var(--ink)', padding:'5px 12px', borderRadius:6, fontSize:11, cursor:'pointer' }}
-          >
-            Close
-          </button>
-        </div>
-        <div style={{ padding:'18px 22px', overflowY:'auto' }}>
-          <p style={{ fontSize:13, color:'var(--ink-dim)', lineHeight:1.6, marginTop:0, marginBottom:16 }}>
-            This is a public-interest dashboard that pulls together data feeds Pittsburgh already publishes —
-            transit, traffic, parking, weather, 311 complaints, and social chatter — and puts them on one
-            map for the 2026 NFL Draft. It is <strong style={{ color:'var(--ink)' }}>near-real-time</strong>,
-            not real-time. Every feed has a refresh cadence listed below. No personal data is collected.
+          <p style={{ fontSize:13.5, color:'var(--ink-dim)', lineHeight:1.65, margin:0 }}>
+            A near-real-time civic view of what&apos;s happening city-wide during the 2026 NFL Draft
+            (April 23–25). Built for the <strong style={{ color:'var(--ink)' }}>nosy neighbor</strong> —
+            the person who wants to know what&apos;s going on without going downtown.
+            Transit, parking, weather, and social chatter, all in one map.
           </p>
-          <p style={{ fontSize:13, color:'var(--ink-dim)', lineHeight:1.6, marginTop:0, marginBottom:16 }}>
-            Built as a civic side project by a Pittsburgh data nerd. The target audience is the tech-savvy
-            "nosy neighbor" who wants to know what&apos;s happening city-wide without attending. All source
-            code uses only publicly available, keyless APIs.
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:'16px 24px', overflowY:'auto', flex:1 }}>
+          <p style={{ fontSize:12.5, color:'var(--ink-dim)', lineHeight:1.6, marginTop:0, marginBottom:14 }}>
+            Every data feed shown is <strong style={{ color:'var(--ink)' }}>near-real-time</strong>,
+            not real-time — there&apos;s a refresh delay for every layer, noted below.
+            No personal data is collected. All APIs are publicly available with no login required.
+          </p>
+          <p style={{ fontSize:12.5, color:'var(--ink-dim)', lineHeight:1.6, marginTop:0, marginBottom:16 }}>
+            <strong style={{ color:'var(--ink-dim)' }}>How the crowding index works:</strong> The 0–100
+            score is a composite of parking garage fill % near the draft footprint (from ParkPGH), active
+            PRT bus count within 0.65 km of the North Shore and Point State Park (from GTFS-RT), and
+            active traffic incidents in the same radius (from 511PA). It&apos;s a useful proxy but not a
+            people-counter — it reflects vehicle and transit pressure, not foot traffic directly.
           </p>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
@@ -243,6 +249,26 @@ function AboutModal({ onClose }: { onClose: () => void }) {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Footer CTA */}
+        <div style={{
+          padding:'14px 24px', borderTop:'1px solid var(--line)',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0,
+        }}>
+          <span style={{ fontSize:11, color:'var(--ink-faint)' }}>
+            No personal data collected · All APIs are public
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              fontFamily:'inherit', background:'var(--gold)', color:'#1A1814',
+              border:'none', padding:'8px 20px', borderRadius:7,
+              fontSize:13, fontWeight:700, cursor:'pointer', letterSpacing:'.02em',
+            }}
+          >
+            Enter Dashboard →
+          </button>
         </div>
       </div>
     </div>
@@ -268,7 +294,7 @@ function RightNowCard({ stats }: { stats: CrowdStats }) {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, marginBottom:10 }}>
         <div>
           <div className="font-space" style={{ fontSize:16, color:'var(--ink)', fontWeight:600, lineHeight:1.3 }}>
-            It&apos;s <span style={{ color:tone.color }}>{tone.label}</span> around North Shore &amp; Point State Park.
+            It&apos;s <span style={{ color:tone.color }}>{tone.label}</span>{' '}around North Shore &amp; Point State Park.
           </div>
           <div style={{ fontSize:11.5, color:'var(--ink-dim)', marginTop:5, lineHeight:1.45 }}>
             {tone.advice}
@@ -318,13 +344,12 @@ const LAYER_DEFS = [
   { key:'cameras',   label:'Cams',         color:'#7FAA6B', cadence:'60s' },
   { key:'parking',   label:'Parking',      color:'#C9A82E', cadence:'30s' },
   { key:'bikes',     label:'POGOH',        color:'#5CC4C4', cadence:'15s' },
-  { key:'311',       label:'311',          color:'#9E6FB0', cadence:'60s' },
   { key:'campus',    label:'Draft campus', color:'#FFD700', cadence:'static' },
 ] as const;
 
 type LayerKey = typeof LAYER_DEFS[number]['key'];
 
-interface LayerState { buses:boolean; trains:boolean; incidents:boolean; cameras:boolean; parking:boolean; bikes:boolean; '311':boolean; campus:boolean; }
+interface LayerState { buses:boolean; trains:boolean; incidents:boolean; cameras:boolean; parking:boolean; bikes:boolean; campus:boolean; }
 
 function LayerPills({ state, onToggle }: { state: LayerState; onToggle: (k: LayerKey) => void }) {
   return (
@@ -520,18 +545,17 @@ function Ticker({ items }: { items: NewsItem[] }) {
 
 // ── LiveCountRow ──────────────────────────────────────────────────────────────
 function LiveCounts({
-  buses, trains, cameras, garages, stations, complaints,
+  buses, trains, cameras, garages, stations,
 }: {
   buses: number; trains: number; cameras: number;
-  garages: number; stations: number; complaints: number;
+  garages: number; stations: number;
 }) {
   const rows = [
-    { label:'Buses active', val:buses,      color:'#FFB81C' },
-    { label:'Rail vehicles',val:trains,     color:'#5EA3C7' },
-    { label:'Traffic cams', val:cameras,    color:'#7FAA6B' },
-    { label:'Garages open', val:garages,    color:'#C9A82E' },
-    { label:'Bike stations',val:stations,   color:'#5CC4C4' },
-    { label:'311 (48h)',    val:complaints, color:'#9E6FB0' },
+    { label:'Buses active', val:buses,   color:'#FFB81C' },
+    { label:'Rail vehicles',val:trains,  color:'#5EA3C7' },
+    { label:'Traffic cams', val:cameras, color:'#7FAA6B' },
+    { label:'Garages open', val:garages, color:'#C9A82E' },
+    { label:'Bike stations',val:stations,color:'#5CC4C4' },
   ];
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1, background:'var(--line)', borderRadius:7, overflow:'hidden', border:'1px solid var(--line)' }}>
@@ -548,12 +572,22 @@ function LiveCounts({
 // ── main Dashboard ────────────────────────────────────────────────────────────
 function Dashboard() {
   const [map, setMap]    = useState<maplibregl.Map | null>(null);
-  const [aboutOpen, setAboutOpen] = useState(false);
+  // Show welcome modal on first visit of each browser session
+  const [aboutOpen, setAboutOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const seen = sessionStorage.getItem('pgh-dash-welcomed');
+    return !seen;
+  });
   const mapContainerRef  = useRef<HTMLDivElement | null>(null);
+
+  const closeAbout = useCallback(() => {
+    sessionStorage.setItem('pgh-dash-welcomed', '1');
+    setAboutOpen(false);
+  }, []);
 
   const [layers, setLayers] = useState<LayerState>({
     buses:true, trains:true, incidents:true, cameras:true,
-    parking:true, bikes:true, '311':true, campus:true,
+    parking:true, bikes:true, campus:true,
   });
   const toggleLayer = useCallback((k: LayerKey) => {
     setLayers(prev => ({ ...prev, [k]: !prev[k] }));
@@ -589,11 +623,6 @@ function Dashboard() {
     queryFn:  () => fetch('/api/bikeshare').then(r => r.json()),
     refetchInterval: 15_000, staleTime: 13_000,
   });
-  const { data: complaintsData } = useQuery<ComplaintsResponse>({
-    queryKey: ['311'],
-    queryFn:  () => fetch('/api/311').then(r => r.json()),
-    refetchInterval: 60_000, staleTime: 55_000,
-  });
   const { data: newsData } = useQuery<NewsResponse>({
     queryKey: ['news'],
     queryFn:  () => fetch('/api/news').then(r => r.json()),
@@ -613,7 +642,6 @@ function Dashboard() {
   const cameras     = cameraData?.cameras     ?? [];
   const garages     = parkingData?.garages    ?? [];
   const stations    = bikeData?.stations      ?? [];
-  const complaints  = complaintsData?.complaints ?? [];
   const newsItems   = newsData?.items         ?? [];
   const socialPosts = socialData?.posts       ?? [];
   const incidents   = incidentData?.incidents ?? [];
@@ -637,7 +665,6 @@ function Dashboard() {
           {map && <CameraLayer      map={map} cameras={cameras}                     visible={layers.cameras} />}
           {map && <ParkingLayer     map={map} garages={garages}                     visible={layers.parking} />}
           {map && <BikeShareLayer   map={map} stations={stations}                   visible={layers.bikes} />}
-          {map && <ThreeOneOneLayer map={map} complaints={complaints}               visible={layers['311']} />}
           {map && <CampusLayer      map={map}                                        visible={layers.campus} />}
 
           {/* Map top-left status + timelapse control */}
@@ -704,7 +731,6 @@ function Dashboard() {
               cameras={cameras.length}
               garages={garages.filter(g => g.state==='open').length}
               stations={stations.filter(s => s.isRenting).length}
-              complaints={complaints.length}
             />
           </section>
 
@@ -734,7 +760,6 @@ function Dashboard() {
               Weather: NWS KPIT · 10 min<br />
               Parking: ParkPGH · 30s<br />
               Bikes: POGOH GBFS · 15s<br />
-              311: WPRDC · 60s<br />
               Social: Bluesky + Reddit · 60s<br />
               News: WPXI/TribLive · 5 min
             </p>
@@ -752,7 +777,7 @@ function Dashboard() {
       <Ticker items={newsItems} />
 
       {/* About modal */}
-      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+      {aboutOpen && <AboutModal onClose={closeAbout} />}
     </div>
   );
 }
