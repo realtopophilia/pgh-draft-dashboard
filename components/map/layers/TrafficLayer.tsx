@@ -4,10 +4,11 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import type { GeoJSON } from 'geojson';
 import type { Incident } from '@/lib/feeds/traffic511';
+import { ensureMapIcons } from '@/lib/map/icons';
+import { P, popupWrap, popupHead, popupMeta } from '@/lib/map/popup';
 
 const INC_SOURCE = 'traffic-incidents';
-const INC_MAJOR  = 'incidents-major';
-const INC_OTHER  = 'incidents-other';
+const INC_LAYER  = 'incidents-symbol';
 
 function incidentsToGeoJSON(incidents: Incident[]): GeoJSON.FeatureCollection {
   return {
@@ -28,80 +29,78 @@ interface TrafficLayerProps {
 
 export default function TrafficLayer({ map, incidents, incidentsVisible }: TrafficLayerProps) {
   const popupRef = useRef<maplibregl.Popup | null>(null);
+  const readyRef = useRef(false);
 
-  // Init sources + layers once
   useEffect(() => {
-    if (!map.getSource(INC_SOURCE)) {
-      map.addSource(INC_SOURCE, { type: 'geojson', data: incidentsToGeoJSON([]) });
+    let cancelled = false;
 
-      map.addLayer({
-        id: INC_MAJOR,
-        type: 'circle',
-        source: INC_SOURCE,
-        filter: ['==', ['get', 'severity'], 'major'],
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 6, 14, 10],
-          'circle-color': '#ef4444',
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#7f1d1d',
-          'circle-opacity': 0.9,
-        },
-      });
+    (async () => {
+      await ensureMapIcons(map);
+      if (cancelled) return;
 
-      map.addLayer({
-        id: INC_OTHER,
-        type: 'circle',
-        source: INC_SOURCE,
-        filter: ['==', ['get', 'severity'], 'other'],
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 7],
-          'circle-color': '#f97316',
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#7c2d12',
-          'circle-opacity': 0.85,
-        },
-      });
+      if (!map.getSource(INC_SOURCE)) {
+        map.addSource(INC_SOURCE, { type: 'geojson', data: incidentsToGeoJSON([]) });
+      }
+      if (!map.getLayer(INC_LAYER)) {
+        map.addLayer({
+          id:     INC_LAYER,
+          type:   'symbol',
+          source: INC_SOURCE,
+          layout: {
+            'icon-image': 'incident-icon',
+            // Major incidents render larger
+            'icon-size': [
+              'interpolate', ['linear'], ['zoom'],
+              10, ['match', ['get', 'severity'], 'major', 0.55, 0.42],
+              13, ['match', ['get', 'severity'], 'major', 0.80, 0.60],
+              15, ['match', ['get', 'severity'], 'major', 1.00, 0.75],
+            ],
+            'icon-allow-overlap':    true,
+            'icon-ignore-placement': true,
+            'icon-anchor':           'bottom',
+          },
+        });
+      }
+      readyRef.current = true;
+      (map.getSource(INC_SOURCE) as maplibregl.GeoJSONSource | undefined)
+        ?.setData(incidentsToGeoJSON(incidents));
+    })();
 
-      const incClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-        if (!e.features?.length) return;
-        const { id, severity } = e.features[0].properties;
-        const [lon, lat] = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
-        popupRef.current?.remove();
-        popupRef.current = new maplibregl.Popup({ maxWidth: '200px' })
-          .setLngLat([lon, lat])
-          .setHTML(`<div class="text-sm font-sans">
-            <p class="font-semibold" style="color:${severity === 'major' ? '#ef4444' : '#f97316'}">
-              ${severity === 'major' ? '⚠ Major Incident' : 'Incident'}
-            </p>
-            <p style="color:#9ca3af;font-size:11px">ID ${id}</p>
-            <p style="font-size:10px;color:#6b7280;margin-top:4px">511PA · ~30s lag</p>
-          </div>`)
-          .addTo(map);
-      };
+    const incClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      if (!e.features?.length) return;
+      const { id, severity } = e.features[0].properties;
+      const [lon, lat] = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+      const band = severity === 'major' ? P.rust : P.amber;
+      popupRef.current?.remove();
+      popupRef.current = new maplibregl.Popup({ maxWidth: '220px' })
+        .setLngLat([lon, lat])
+        .setHTML(popupWrap(`
+          ${popupHead(severity === 'major' ? 'Major Incident' : 'Incident', band)}
+          <p style="font-size:11px;color:${P.inkMute};margin:0">ID ${id}</p>
+          ${popupMeta('511PA · ~30 s lag')}
+        `))
+        .addTo(map);
+    };
 
-      map.on('click', INC_MAJOR, incClick);
-      map.on('click', INC_OTHER, incClick);
-      map.on('mouseenter', INC_MAJOR, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', INC_MAJOR, () => { map.getCanvas().style.cursor = ''; });
-      map.on('mouseenter', INC_OTHER, () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', INC_OTHER, () => { map.getCanvas().style.cursor = ''; });
-    }
+    map.on('click', INC_LAYER, incClick);
+    map.on('mouseenter', INC_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', INC_LAYER, () => { map.getCanvas().style.cursor = ''; });
 
-    return () => { popupRef.current?.remove(); };
+    return () => {
+      cancelled = true;
+      popupRef.current?.remove();
+    };
   }, [map]);
 
-  // Update data
   useEffect(() => {
+    if (!readyRef.current) return;
     (map.getSource(INC_SOURCE) as maplibregl.GeoJSONSource | undefined)
       ?.setData(incidentsToGeoJSON(incidents));
   }, [map, incidents]);
 
-  // Visibility
   useEffect(() => {
-    [INC_MAJOR, INC_OTHER].forEach(id => {
-      if (map.getLayer(id))
-        map.setLayoutProperty(id, 'visibility', incidentsVisible ? 'visible' : 'none');
-    });
+    if (map.getLayer(INC_LAYER))
+      map.setLayoutProperty(INC_LAYER, 'visibility', incidentsVisible ? 'visible' : 'none');
   }, [map, incidentsVisible]);
 
   return null;

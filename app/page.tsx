@@ -21,6 +21,7 @@ const CameraLayer      = dynamic(() => import('@/components/map/layers/CameraLay
 const ParkingLayer     = dynamic(() => import('@/components/map/layers/ParkingLayer'),         { ssr: false });
 const BikeShareLayer   = dynamic(() => import('@/components/map/layers/BikeShareLayer'),       { ssr: false });
 const CampusLayer        = dynamic(() => import('@/components/map/layers/CampusLayer'),          { ssr: false });
+const HeatmapLayer       = dynamic(() => import('@/components/map/layers/HeatmapLayer'),         { ssr: false });
 const TimelapseCapture   = dynamic(() => import('@/components/timelapse/TimelapseCapture'),     { ssr: false });
 
 interface VehiclesResponse   { vehicles:   TransitVehicle[]; fetchedAt: number; }
@@ -108,6 +109,37 @@ function FreshDot({ state='live', label }: { state?:'live'|'slow'|'stale'; label
   );
 }
 
+// ── map-overlay error chip ───────────────────────────────────────────────────
+function MapErrorChip({ label }: { label: string }) {
+  return (
+    <div style={{
+      padding:'5px 10px', background:'rgba(200,53,45,.18)',
+      border:'1px solid var(--rust)', borderRadius:999,
+      fontSize:10.5, color:'var(--rust)', fontWeight:600,
+      letterSpacing:'.04em', whiteSpace:'nowrap',
+    }}>
+      {label} feed down
+    </div>
+  );
+}
+
+// ── feed-unavailable inline notice ───────────────────────────────────────────
+function FeedError({ name }: { name: string }) {
+  return (
+    <div
+      role="status"
+      style={{
+        fontSize: 11, color: 'var(--ink-mute)', padding: '8px 10px',
+        background: 'rgba(200,53,45,.06)', border: '1px dashed var(--line-2)',
+        borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8,
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--rust)' }} />
+      {name} feed unavailable — retrying.
+    </div>
+  );
+}
+
 // ── section header helper ────────────────────────────────────────────────────
 function SectionHead({ label, right }: { label: string; right?: React.ReactNode }) {
   return (
@@ -116,6 +148,70 @@ function SectionHead({ label, right }: { label: string; right?: React.ReactNode 
         {label}
       </span>
       {right}
+    </div>
+  );
+}
+
+// ── Draft schedule / countdown ───────────────────────────────────────────────
+const DRAFT_ROUNDS = [
+  { label:'Round 1',   start: new Date('2026-04-23T20:00:00-04:00'), end: new Date('2026-04-24T00:00:00-04:00') },
+  { label:'Rounds 2–3',start: new Date('2026-04-24T19:00:00-04:00'), end: new Date('2026-04-25T00:00:00-04:00') },
+  { label:'Rounds 4–7',start: new Date('2026-04-25T12:00:00-04:00'), end: new Date('2026-04-25T20:00:00-04:00') },
+];
+
+function DraftCountdownStrip() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const draftEnd = DRAFT_ROUNDS[DRAFT_ROUNDS.length - 1].end;
+  if (now > draftEnd) return null; // draft over — strip disappears
+
+  // Find the current or next round
+  const live  = DRAFT_ROUNDS.find(r => now >= r.start && now < r.end);
+  const next  = DRAFT_ROUNDS.find(r => now < r.start);
+
+  let label = '';
+  let detail = '';
+  let color = 'var(--teal)';
+
+  if (live) {
+    label = `🏈 ${live.label} — ON THE CLOCK`;
+    color = 'var(--gold)';
+    const msLeft = live.end.getTime() - now.getTime();
+    const h = Math.floor(msLeft / 3_600_000);
+    const m = Math.floor((msLeft % 3_600_000) / 60_000);
+    detail = h > 0 ? `${h}h ${m}m remaining` : `${m}m remaining`;
+  } else if (next) {
+    label = `${next.label} starts`;
+    const msUntil = next.start.getTime() - now.getTime();
+    const h = Math.floor(msUntil / 3_600_000);
+    const m = Math.floor((msUntil % 3_600_000) / 60_000);
+    const s = Math.floor((msUntil % 60_000) / 1_000);
+    detail = h > 0
+      ? `in ${h}h ${m}m · ${next.start.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`
+      : m > 0 ? `in ${m}m ${s}s` : `in ${s}s`;
+  }
+
+  return (
+    <div style={{
+      background: live ? 'rgba(255,206,31,.10)' : 'rgba(0,182,176,.07)',
+      borderBottom: `1px solid ${live ? 'rgba(255,206,31,.25)' : 'rgba(0,182,176,.2)'}`,
+      padding:'5px 18px', display:'flex', alignItems:'center', gap:14, flexShrink:0,
+    }}>
+      <span style={{ fontSize:10, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color, whiteSpace:'nowrap' }}>
+        {label}
+      </span>
+      <span className="font-mono" style={{ fontSize:10.5, color:'var(--ink-dim)' }}>{detail}</span>
+      {live && (
+        <span className="pulse-dot" style={{
+          width:7, height:7, borderRadius:'50%', background:'var(--gold)',
+          marginLeft:'auto', flexShrink:0,
+          ['--pc' as string]: 'rgba(255,206,31,.5)',
+        }} />
+      )}
     </div>
   );
 }
@@ -129,9 +225,12 @@ function TopBar({ onAbout }: { onAbout: () => void }) {
       borderBottom:'1px solid var(--line)', zIndex:10, flexShrink:0, gap:16,
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-        {/* bespoke mark */}
-        <svg width="30" height="30" viewBox="0 0 34 34">
-          <rect x="1" y="1" width="32" height="32" rx="6" fill="#1A1814" stroke="var(--gold)" strokeWidth="1.2"/>
+        {/* bespoke mark — Warhol-style offset silkscreen (teal under gold) */}
+        <svg width="32" height="32" viewBox="0 0 34 34" aria-hidden="true">
+          <rect x="1" y="1" width="32" height="32" rx="6" fill="#1A1814" stroke="var(--teal)" strokeWidth="1.1"/>
+          {/* offset teal triangle = silkscreen misregistration */}
+          <path d="M11 23 L19 9 L26 23 Z" fill="none" stroke="var(--teal)" strokeWidth="1.2" strokeLinejoin="round" opacity=".85"/>
+          {/* primary gold triangle */}
           <path d="M9 23 L17 9 L25 23 Z" fill="none" stroke="var(--gold)" strokeWidth="1.4" strokeLinejoin="round"/>
           <circle cx="17" cy="18" r="2.2" fill="var(--gold)"/>
         </svg>
@@ -139,19 +238,24 @@ function TopBar({ onAbout }: { onAbout: () => void }) {
           <div className="font-space" style={{ fontWeight:700, fontSize:14, letterSpacing:'.01em', color:'var(--ink)' }}>
             Pittsburgh Draft Dashboard
           </div>
-          <div style={{ fontSize:10, color:'var(--ink-mute)', letterSpacing:'.12em', textTransform:'uppercase', fontWeight:500 }}>
-            Near-real-time · city-wide civic view
+          <div className="topbar-subtitle" style={{ fontSize:10, color:'var(--ink-mute)', letterSpacing:'.14em', textTransform:'uppercase', fontWeight:500 }}>
+            Greatness is on the clock · city-wide civic view
           </div>
         </div>
-        <div style={{ width:1, height:24, background:'var(--line)' }} />
-        <span style={{ color:'var(--gold)', fontWeight:600, fontSize:11, letterSpacing:'.04em' }}>
+        <div className="topbar-divider" style={{ width:1, height:24, background:'var(--line)' }} />
+        <span className="font-space topbar-date-chip" style={{
+          display:'inline-flex', alignItems:'center', gap:6,
+          color:'var(--gold)', fontWeight:700, fontSize:11, letterSpacing:'.08em',
+        }}>
+          <span style={{ width:7, height:7, borderRadius:2, background:'var(--teal)', display:'inline-block' }} />
           NFL DRAFT · APR 23–25, 2026
         </span>
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:14 }}>
         <FreshDot state="live" label="Live" />
-        <LiveClock />
+        <span className="topbar-clock"><LiveClock /></span>
         <button
+          className="topbar-about"
           onClick={onAbout}
           style={{
             fontFamily:'inherit', border:'1px solid var(--line)', background:'var(--bg-2)',
@@ -191,8 +295,9 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           padding:'20px 24px 16px', borderBottom:'1px solid var(--line)', flexShrink:0,
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:12 }}>
-            <svg width="36" height="36" viewBox="0 0 34 34">
-              <rect x="1" y="1" width="32" height="32" rx="6" fill="#1A1814" stroke="var(--gold)" strokeWidth="1.2"/>
+            <svg width="38" height="38" viewBox="0 0 34 34" aria-hidden="true">
+              <rect x="1" y="1" width="32" height="32" rx="6" fill="#1A1814" stroke="var(--teal)" strokeWidth="1.1"/>
+              <path d="M11 23 L19 9 L26 23 Z" fill="none" stroke="var(--teal)" strokeWidth="1.2" strokeLinejoin="round" opacity=".85"/>
               <path d="M9 23 L17 9 L25 23 Z" fill="none" stroke="var(--gold)" strokeWidth="1.4" strokeLinejoin="round"/>
               <circle cx="17" cy="18" r="2.2" fill="var(--gold)"/>
             </svg>
@@ -207,9 +312,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           </div>
           <p style={{ fontSize:13.5, color:'var(--ink-dim)', lineHeight:1.65, margin:0 }}>
             A near-real-time civic view of what&apos;s happening city-wide during the 2026 NFL Draft
-            (April 23–25). Built for the <strong style={{ color:'var(--ink)' }}>nosy neighbor</strong> —
-            the person who wants to know what&apos;s going on without going downtown.
-            Transit, parking, weather, and social chatter, all in one map.
+            (April 23–25). Transit, parking, weather, and social chatter, all in one map.
           </p>
         </div>
 
@@ -257,7 +360,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0,
         }}>
           <span style={{ fontSize:11, color:'var(--ink-faint)' }}>
-            No personal data collected · All APIs are public
+            Independent civic project · not affiliated with the NFL or Visit Pittsburgh · <span style={{ color:'var(--teal)' }}>#LovePGH</span>
           </span>
           <button
             onClick={onClose}
@@ -278,51 +381,83 @@ function AboutModal({ onClose }: { onClose: () => void }) {
 // ── RightNowCard ──────────────────────────────────────────────────────────────
 interface CrowdStats { index:number; fillPct:number; freeSpots:number; nearBuses:number; delay:number; }
 
+// Crowding thresholds — calibrated so "starting to fill" begins around 25,
+// not 0. A score of 32 = "starting to fill", not "busy".
+const CROWD_TONES = [
+  { max:25, label:'light crowd',      color:'var(--moss)',    advice:'Great time to head in — roads and transit are clear.' },
+  { max:48, label:'starting to fill', color:'var(--gold)',    advice:'Mild build-up near the venues. Plan a few extra minutes.' },
+  { max:68, label:'getting busy',     color:'#E69545',        advice:'Noticeably busy. Transit is faster than driving right now.' },
+  { max:85, label:'very busy',        color:'var(--rust)',    advice:'Expect waits. Light rail or walking strongly recommended.' },
+  { max:Infinity, label:'packed',     color:'#9B1C1C',        advice:'Avoid driving in. Light rail is the only reliable option.' },
+] as const;
+
+function crowdTone(index: number) {
+  return CROWD_TONES.find(t => index < t.max) ?? CROWD_TONES[CROWD_TONES.length - 1];
+}
+
 function RightNowCard({ stats }: { stats: CrowdStats }) {
   const { index } = stats;
-  const tone =
-    index < 30 ? { label:'quiet',     color:'var(--moss)', advice:'Good time to head in. Roads and transit are clear.' }
-  : index < 55 ? { label:'busy',      color:'var(--gold)', advice:'Moving, but tight. Allow extra travel time.' }
-  : index < 78 ? { label:'very busy', color:'#E69545',     advice:'Expect waits. Transit or walking recommended.' }
-  :              { label:'packed',    color:'var(--rust)', advice:'Avoid driving in. Light rail is fastest option.' };
+  const [infoOpen, setInfoOpen] = useState(false);
+  const tone = crowdTone(index);
 
   return (
     <div className="pgh-card" style={{ padding:'14px 16px', flexShrink:0 }}>
-      <div style={{ fontSize:10, letterSpacing:'.16em', color:'var(--ink-mute)', textTransform:'uppercase', fontWeight:600, marginBottom:6 }}>
-        Near the Draft footprint
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+        <div style={{ fontSize:10, letterSpacing:'.16em', color:'var(--ink-mute)', textTransform:'uppercase', fontWeight:600 }}>
+          Near the Draft footprint
+        </div>
+        <button
+          onClick={() => setInfoOpen(o => !o)}
+          aria-label="How crowding index is calculated"
+          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-faint)', fontSize:13, padding:'0 2px', lineHeight:1 }}
+        >ⓘ</button>
       </div>
+
+      {infoOpen && (
+        <div style={{ background:'var(--bg-2)', borderRadius:6, padding:'9px 11px', marginBottom:10, fontSize:11, color:'var(--ink-dim)', lineHeight:1.55 }}>
+          Score = <strong style={{ color:'var(--ink)' }}>parking fill</strong> near venues (40 pts)
+          + <strong style={{ color:'var(--ink)' }}>bus density</strong> within 0.65 km (30 pts)
+          + <strong style={{ color:'var(--ink)' }}>active incidents</strong> nearby (20 pts).
+          It measures vehicle &amp; transit pressure, not a people-counter.
+        </div>
+      )}
+
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, marginBottom:10 }}>
         <div>
           <div className="font-space" style={{ fontSize:16, color:'var(--ink)', fontWeight:600, lineHeight:1.3 }}>
-            It&apos;s <span style={{ color:tone.color }}>{tone.label}</span>{' '}around North Shore &amp; Point State Park.
+            It&apos;s <span style={{ color:tone.color }}>{tone.label}</span>{' '}
+            around North Shore &amp; Point State Park.
           </div>
           <div style={{ fontSize:11.5, color:'var(--ink-dim)', marginTop:5, lineHeight:1.45 }}>
             {tone.advice}
           </div>
         </div>
         <div style={{ textAlign:'right', flexShrink:0 }}>
-          <div style={{ fontSize:10, color:'var(--ink-mute)', letterSpacing:'.14em', textTransform:'uppercase' }}>Crowding</div>
+          <div style={{ fontSize:10, color:'var(--ink-mute)', letterSpacing:'.14em', textTransform:'uppercase' }}>Pressure</div>
           <div className="font-mono" style={{ fontSize:28, fontWeight:600, color:tone.color, letterSpacing:'-.02em', lineHeight:1 }}>
             {index}<span style={{ fontSize:12, color:'var(--ink-faint)', fontWeight:400 }}>/100</span>
           </div>
         </div>
       </div>
+
       <div style={{ position:'relative', marginBottom:8 }}>
         <div className="gauge-bar">
           <div className="gauge-fill" style={{ width:'100%' }} />
           <div className="gauge-pin" style={{ left:`calc(${index}% - 1px)` }} />
         </div>
-        <div style={{ display:'flex', justifyContent:'space-between', marginTop:5, fontSize:9, color:'var(--ink-faint)', letterSpacing:'.08em', textTransform:'uppercase' }}>
-          <span>Quiet</span><span>Busy</span><span>V. busy</span><span>Packed</span>
+        <div style={{ display:'flex', justifyContent:'space-between', marginTop:5, fontSize:9, color:'var(--ink-faint)', letterSpacing:'.06em', textTransform:'uppercase' }}>
+          <span>Light</span><span>Filling</span><span>Busy</span><span>Packed</span>
         </div>
       </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
         {[
-          { label:'Garages', val:`${stats.fillPct}%`, sub:'full',       tone: stats.fillPct>80?'rust':stats.fillPct>60?'gold':'moss' },
-          { label:'Delay',   val:`+${stats.delay}m`,  sub:'vs typical', tone: stats.delay>8?'rust':stats.delay>4?'gold':'moss' },
-          { label:'Buses',   val:String(stats.nearBuses), sub:'in footprint', tone: stats.nearBuses>20?'rust':stats.nearBuses>10?'gold':'moss' },
-        ].map(({ label, val, sub, tone: t }) => {
-          const c = t==='rust'?'var(--rust)':t==='gold'?'var(--gold)':'var(--moss)';
+          { label:'Garages', val:`${stats.fillPct}%`, sub:'full near venues', hi:80, mid:55 },
+          { label:'Delay',   val:`+${stats.delay}m`,  sub:'vs. typical',      hi:8,  mid:4 },
+          { label:'Buses',   val:String(stats.nearBuses), sub:'near venues',   hi:20, mid:10 },
+        ].map(({ label, val, sub, hi, mid }) => {
+          const raw = parseFloat(val);
+          const c = raw >= hi ? 'var(--rust)' : raw >= mid ? 'var(--gold)' : 'var(--moss)';
           return (
             <div key={label} style={{ background:'var(--bg-2)', borderRadius:5, padding:'7px 9px' }}>
               <div style={{ fontSize:9, letterSpacing:'.12em', color:'var(--ink-mute)', textTransform:'uppercase', fontWeight:600 }}>{label}</div>
@@ -338,18 +473,19 @@ function RightNowCard({ stats }: { stats: CrowdStats }) {
 
 // ── LayerPills ────────────────────────────────────────────────────────────────
 const LAYER_DEFS = [
-  { key:'buses',     label:'Buses',        color:'#FFB81C', cadence:'20s' },
+  { key:'heatmap',   label:'Pressure',     color:'#C8352D', cadence:'20s' },
+  { key:'buses',     label:'Buses',        color:'#FFCE1F', cadence:'20s' },
   { key:'trains',    label:'Rail',         color:'#5EA3C7', cadence:'20s' },
-  { key:'incidents', label:'Incidents',    color:'#D96846', cadence:'30s' },
+  { key:'incidents', label:'Incidents',    color:'#C8352D', cadence:'30s' },
   { key:'cameras',   label:'Cams',         color:'#7FAA6B', cadence:'60s' },
-  { key:'parking',   label:'Parking',      color:'#C9A82E', cadence:'30s' },
-  { key:'bikes',     label:'POGOH',        color:'#5CC4C4', cadence:'15s' },
-  { key:'campus',    label:'Draft campus', color:'#FFD700', cadence:'static' },
+  { key:'parking',   label:'Parking',      color:'#E83E8C', cadence:'30s' },
+  { key:'bikes',     label:'POGOH',        color:'#00B6B0', cadence:'15s' },
+  { key:'campus',    label:'Draft campus', color:'#FFCE1F', cadence:'static' },
 ] as const;
 
 type LayerKey = typeof LAYER_DEFS[number]['key'];
 
-interface LayerState { buses:boolean; trains:boolean; incidents:boolean; cameras:boolean; parking:boolean; bikes:boolean; campus:boolean; }
+interface LayerState { heatmap:boolean; buses:boolean; trains:boolean; incidents:boolean; cameras:boolean; parking:boolean; bikes:boolean; campus:boolean; }
 
 function LayerPills({ state, onToggle }: { state: LayerState; onToggle: (k: LayerKey) => void }) {
   return (
@@ -370,7 +506,7 @@ function LayerPills({ state, onToggle }: { state: LayerState; onToggle: (k: Laye
 }
 
 // ── GaragePanel ───────────────────────────────────────────────────────────────
-function GaragePanel({ garages }: { garages: ParkingGarage[] }) {
+function GaragePanel({ garages, isError }: { garages: ParkingGarage[]; isError?: boolean }) {
   const sorted = useMemo(() =>
     [...garages]
       .filter(g => g.state !== 'closed')
@@ -383,6 +519,14 @@ function GaragePanel({ garages }: { garages: ParkingGarage[] }) {
     [garages]
   );
 
+  if (isError) {
+    return (
+      <section style={{ flexShrink:0 }}>
+        <SectionHead label="Garages · nearest event first" right={<FreshDot state="stale" label="ParkPGH" />} />
+        <FeedError name="ParkPGH" />
+      </section>
+    );
+  }
   if (!sorted.length) return null;
   return (
     <section style={{ flexShrink:0 }}>
@@ -450,7 +594,15 @@ const PLATFORM = {
   reddit:  { label:'Reddit',  color:'#fb923c', bg:'rgba(251,146,60,.08)',   bgHover:'rgba(251,146,60,.15)' },
 };
 
-function SocialPanel({ posts }: { posts: SocialPost[] }) {
+function SocialPanel({ posts, isError }: { posts: SocialPost[]; isError?: boolean }) {
+  if (isError) {
+    return (
+      <section style={{ flexShrink:0 }}>
+        <SectionHead label="Social · live posts" right={<FreshDot state="stale" label="Bluesky/Reddit" />} />
+        <FeedError name="Social" />
+      </section>
+    );
+  }
   if (!posts.length) return null;
   return (
     <section style={{ flexShrink:0 }}>
@@ -487,7 +639,15 @@ function SocialPanel({ posts }: { posts: SocialPost[] }) {
 }
 
 // ── NewsPanel ─────────────────────────────────────────────────────────────────
-function NewsPanel({ items }: { items: NewsItem[] }) {
+function NewsPanel({ items, isError }: { items: NewsItem[]; isError?: boolean }) {
+  if (isError) {
+    return (
+      <section style={{ flexShrink:0 }}>
+        <SectionHead label="Local news · draft only" right={<FreshDot state="stale" label="WPXI/Trib" />} />
+        <FeedError name="News" />
+      </section>
+    );
+  }
   if (!items.length) return null;
   return (
     <section style={{ flexShrink:0 }}>
@@ -524,18 +684,26 @@ function Ticker({ items }: { items: NewsItem[] }) {
         fontSize:9.5, letterSpacing:'.16em', color:'var(--bg-0)',
         fontWeight:700, background:'var(--gold)', borderRadius:3,
         textTransform:'uppercase', whiteSpace:'nowrap',
+        boxShadow: '2px 2px 0 0 var(--teal)',   /* offset silkscreen nod */
       }}>
         LIVE · LOCAL NEWS
       </div>
       <div style={{ flex:1, overflow:'hidden', position:'relative' }}>
         <div className="ticker-track">
           {duped.map((n, i) => (
-            <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:12, fontSize:12 }}>
+            <a
+              key={i}
+              href={n.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ticker-item"
+              title={`Open: ${n.title}`}
+            >
               <span className="font-mono" style={{ fontSize:9.5, color:'var(--gold)', letterSpacing:'.1em' }}>{n.source}</span>
               <span style={{ color:'var(--ink-dim)' }}>{n.title}</span>
               <span style={{ color:'var(--ink-faint)', fontSize:10 }}>{timeAgo(n.publishedAt)}</span>
               <span style={{ color:'var(--line-2)' }}>◆</span>
-            </span>
+            </a>
           ))}
         </div>
       </div>
@@ -551,11 +719,11 @@ function LiveCounts({
   garages: number; stations: number;
 }) {
   const rows = [
-    { label:'Buses active', val:buses,   color:'#FFB81C' },
-    { label:'Rail vehicles',val:trains,  color:'#5EA3C7' },
-    { label:'Traffic cams', val:cameras, color:'#7FAA6B' },
-    { label:'Garages open', val:garages, color:'#C9A82E' },
-    { label:'Bike stations',val:stations,color:'#5CC4C4' },
+    { label:'Buses active', val:buses,   color:'var(--gold)'  },
+    { label:'Rail vehicles',val:trains,  color:'var(--steel)' },
+    { label:'Traffic cams', val:cameras, color:'var(--moss)'  },
+    { label:'Garages open', val:garages, color:'var(--magenta)' },
+    { label:'Bike stations',val:stations,color:'var(--teal)'  },
   ];
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1, background:'var(--line)', borderRadius:7, overflow:'hidden', border:'1px solid var(--line)' }}>
@@ -585,8 +753,10 @@ function Dashboard() {
     setAboutOpen(false);
   }, []);
 
+  const [sheetOpen, setSheetOpen] = useState(false);
+
   const [layers, setLayers] = useState<LayerState>({
-    buses:true, trains:true, incidents:true, cameras:true,
+    heatmap:true, buses:true, trains:true, incidents:true, cameras:true,
     parking:true, bikes:true, campus:true,
   });
   const toggleLayer = useCallback((k: LayerKey) => {
@@ -598,37 +768,37 @@ function Dashboard() {
     queryFn:  () => fetch('/api/transit/vehicles').then(r => r.json()),
     refetchInterval: 20_000, staleTime: 18_000,
   });
-  const { data: incidentData } = useQuery<IncidentsResponse>({
+  const { data: incidentData, isError: incidentError } = useQuery<IncidentsResponse>({
     queryKey: ['incidents'],
     queryFn:  () => fetch('/api/traffic/incidents').then(r => r.json()),
     refetchInterval: 30_000, staleTime: 28_000,
   });
-  const { data: cameraData } = useQuery<CamerasResponse>({
+  const { data: cameraData, isError: cameraError } = useQuery<CamerasResponse>({
     queryKey: ['cameras'],
     queryFn:  () => fetch('/api/cameras').then(r => r.json()),
     refetchInterval: 600_000, staleTime: 590_000,
   });
-  const { data: weatherData } = useQuery<WeatherData>({
+  const { data: weatherData, isError: weatherError } = useQuery<WeatherData>({
     queryKey: ['weather'],
     queryFn:  () => fetch('/api/weather/current').then(r => r.json()),
     refetchInterval: 600_000, staleTime: 590_000,
   });
-  const { data: parkingData } = useQuery<ParkingResponse>({
+  const { data: parkingData, isError: parkingError } = useQuery<ParkingResponse>({
     queryKey: ['parking'],
     queryFn:  () => fetch('/api/parking').then(r => r.json()),
     refetchInterval: 30_000, staleTime: 28_000,
   });
-  const { data: bikeData } = useQuery<BikeShareResponse>({
+  const { data: bikeData, isError: bikeError } = useQuery<BikeShareResponse>({
     queryKey: ['bikeshare'],
     queryFn:  () => fetch('/api/bikeshare').then(r => r.json()),
     refetchInterval: 15_000, staleTime: 13_000,
   });
-  const { data: newsData } = useQuery<NewsResponse>({
+  const { data: newsData, isError: newsError } = useQuery<NewsResponse>({
     queryKey: ['news'],
     queryFn:  () => fetch('/api/news').then(r => r.json()),
     refetchInterval: 300_000, staleTime: 290_000,
   });
-  const { data: socialData } = useQuery<SocialResponse>({
+  const { data: socialData, isError: socialError } = useQuery<SocialResponse>({
     queryKey: ['social'],
     queryFn:  () => fetch('/api/social').then(r => r.json()),
     refetchInterval: 60_000, staleTime: 55_000,
@@ -655,11 +825,13 @@ function Dashboard() {
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', background:'var(--bg-0)', color:'var(--ink)', overflow:'hidden' }}>
       <TopBar onAbout={() => setAboutOpen(true)} />
+      <DraftCountdownStrip />
 
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+      <div className="pgh-shell">
         {/* Map */}
-        <div ref={mapContainerRef} style={{ flex:1, position:'relative' }}>
+        <div ref={mapContainerRef} className="pgh-map">
           <DraftMap onMapReady={handleMapReady} />
+          {map && <HeatmapLayer     map={map} vehicles={vehicles} garages={garages}   visible={layers.heatmap} />}
           {map && <TransitLayer     map={map} vehicles={vehicles}                   busVisible={layers.buses}    trainVisible={layers.trains} />}
           {map && <TrafficLayer     map={map} incidents={incidents}                 incidentsVisible={layers.incidents} />}
           {map && <CameraLayer      map={map} cameras={cameras}                     visible={layers.cameras} />}
@@ -672,11 +844,10 @@ function Dashboard() {
             position:'absolute', top:12, left:12, display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', zIndex:5,
           }}>
             <TimelapseCapture mapContainer={mapContainerRef.current} />
-            {transitError && (
-              <div style={{ padding:'5px 10px', background:'rgba(217,104,70,.2)', border:'1px solid var(--rust)', borderRadius:6, fontSize:10.5, color:'var(--rust)' }}>
-                Transit feed error — retrying
-              </div>
-            )}
+            {transitError  && <MapErrorChip label="Transit" />}
+            {incidentError && <MapErrorChip label="Incidents" />}
+            {cameraError   && <MapErrorChip label="Cameras" />}
+            {bikeError     && <MapErrorChip label="Bikes" />}
             {lastUpdate && (
               <div style={{ padding:'5px 10px', background:'rgba(23,22,26,.9)', backdropFilter:'blur(6px)', border:'1px solid var(--line)', borderRadius:999, fontSize:10, color:'var(--ink-faint)', fontFamily:'var(--font-mono)' }}>
                 Transit {lastUpdate}
@@ -684,8 +855,8 @@ function Dashboard() {
             )}
           </div>
 
-          {/* Map legend bottom-left */}
-          <div style={{
+          {/* Map legend bottom-left (hidden on mobile via .pgh-map-legend) */}
+          <div className="pgh-map-legend" style={{
             position:'absolute', left:12, bottom:12,
             background:'rgba(23,22,26,.88)', backdropFilter:'blur(8px)',
             border:'1px solid var(--line)', borderRadius:8, padding:'10px 12px', maxWidth:200, zIndex:5,
@@ -706,13 +877,22 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Side panel */}
-        <aside style={{
-          width:368, flexShrink:0,
-          background:'var(--bg-1)', borderLeft:'1px solid var(--line)',
-          display:'flex', flexDirection:'column',
-          padding:'14px', gap:14, overflowY:'auto',
-        }}>
+        {/* Side panel — aside on desktop, bottom-sheet on mobile */}
+        <aside className={`pgh-aside ${sheetOpen ? 'open' : ''}`}>
+          {/* Mobile drag-handle */}
+          <button
+            type="button"
+            className="pgh-sheet-handle"
+            onClick={() => setSheetOpen(o => !o)}
+            aria-expanded={sheetOpen}
+            aria-label={sheetOpen ? 'Collapse panel' : 'Expand panel'}
+          >
+            <span className="ctx-title">
+              {sheetOpen ? 'Hide details' : `Crowding ${crowd.index}/100 · tap for details`}
+            </span>
+            <span className="ctx-caret">▲</span>
+          </button>
+
           {/* Right-now card */}
           <RightNowCard stats={crowd} />
 
@@ -735,21 +915,26 @@ function Dashboard() {
           </section>
 
           {/* Parking garages */}
-          <GaragePanel garages={garages} />
+          <GaragePanel garages={garages} isError={parkingError} />
 
           {/* Weather */}
-          {weatherData && !('error' in weatherData) && (
+          {weatherError ? (
+            <section style={{ flexShrink:0 }}>
+              <SectionHead label="Draft weekend weather" right={<FreshDot state="stale" label="NWS" />} />
+              <FeedError name="Weather" />
+            </section>
+          ) : weatherData && !('error' in weatherData) ? (
             <WeatherWidget data={weatherData} />
-          )}
+          ) : null}
 
           {/* Draft schedule */}
           <ScheduleWidget />
 
           {/* Social */}
-          <SocialPanel posts={socialPosts} />
+          <SocialPanel posts={socialPosts} isError={socialError} />
 
           {/* News */}
-          <NewsPanel items={newsItems} />
+          <NewsPanel items={newsItems} isError={newsError} />
 
           {/* Footer */}
           <section style={{ marginTop:'auto', paddingTop:10, borderTop:'1px solid var(--line)', flexShrink:0 }}>

@@ -4,17 +4,12 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import type { GeoJSON } from 'geojson';
 import type { TrafficCamera } from '@/lib/feeds/cameras';
+import { ensureMapIcons } from '@/lib/map/icons';
+import { P, popupWrap, popupHead, popupMeta } from '@/lib/map/popup';
 
 const SOURCE_ID = 'traffic-cameras';
-const LAYER_ID = 'traffic-cameras-icons';
-const ICON_ID = 'camera-marker';
-
-const CAMERA_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-  <circle cx="18" cy="18" r="14" fill="#10b981" stroke="#064e3b" stroke-width="2"/>
-  <path d="M13 14h3l1.5-2h3L22 14h3v10H11V14h2zm5 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-        fill="#052e1a"/>
-</svg>`.trim();
+const LAYER_ID  = 'traffic-cameras-icons';
+const ICON_ID   = 'camera-icon';
 
 function camerasToGeoJSON(cams: TrafficCamera[]): GeoJSON.FeatureCollection {
   return {
@@ -33,23 +28,6 @@ function camerasToGeoJSON(cams: TrafficCamera[]): GeoJSON.FeatureCollection {
   };
 }
 
-async function loadCameraIcon(map: maplibregl.Map): Promise<void> {
-  if (map.hasImage(ICON_ID)) return;
-  const blob = new Blob([CAMERA_SVG], { type: 'image/svg+xml' });
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = new Image(36, 36);
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('camera icon failed'));
-      img.src = url;
-    });
-    if (!map.hasImage(ICON_ID)) map.addImage(ICON_ID, img);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 interface CameraLayerProps {
   map: maplibregl.Map;
   cameras: TrafficCamera[];
@@ -64,7 +42,7 @@ export default function CameraLayer({ map, cameras, visible }: CameraLayerProps)
     let cancelled = false;
 
     (async () => {
-      await loadCameraIcon(map);
+      await ensureMapIcons(map);
       if (cancelled) return;
 
       if (!map.getSource(SOURCE_ID)) {
@@ -82,10 +60,11 @@ export default function CameraLayer({ map, cameras, visible }: CameraLayerProps)
             'icon-image': ICON_ID,
             'icon-size': [
               'interpolate', ['linear'], ['zoom'],
-              10, 0.4, 13, 0.6, 16, 0.85,
+              10, 0.42, 13, 0.62, 16, 0.85,
             ],
-            'icon-allow-overlap': true,
+            'icon-allow-overlap':    true,
             'icon-ignore-placement': true,
+            'icon-anchor':           'bottom',
           },
         });
       }
@@ -109,19 +88,16 @@ export default function CameraLayer({ map, cameras, visible }: CameraLayerProps)
       popupRef.current?.remove();
       popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' })
         .setLngLat(coords)
-        .setHTML(
-          `<div class="text-sm font-sans" style="min-width:260px;max-width:300px">
-            <p class="font-semibold" style="color:#10b981;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">
-              ${props.roadway || 'Traffic camera'}${props.direction ? ` · ${props.direction}` : ''}
-            </p>
-            <p style="color:#d1d5db;font-size:12px;margin-top:2px">${props.location || ''}</p>
-            <img src="${liveSrc}" alt="Live traffic camera"
-                 style="display:block;width:100%;margin-top:8px;border-radius:4px;background:#111"
-                 onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
-            <p style="display:none;color:#f87171;font-size:11px;margin-top:6px">Camera offline</p>
-            <p style="font-size:10px;color:#6b7280;margin-top:6px">511PA · JPG refreshes ~60s</p>
-          </div>`
-        )
+        .setHTML(popupWrap(`
+          ${popupHead(props.roadway || 'Traffic Camera', P.moss)}
+          ${props.direction ? `<p style="font-size:11px;color:${P.inkMute};margin:0 0 6px;letter-spacing:.04em;text-transform:uppercase">${props.direction}</p>` : ''}
+          ${props.location  ? `<p style="font-size:12px;color:${P.inkDim};margin:0 0 8px">${props.location}</p>` : ''}
+          <img src="${liveSrc}" alt="Live traffic camera"
+               style="display:block;width:100%;border-radius:5px;background:${P.bg};border:1px solid ${P.line}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
+          <p style="display:none;color:${P.rust};font-size:11px;margin:6px 0 0">Camera offline</p>
+          ${popupMeta('511PA · JPG · refreshes ~60 s')}
+        `, 270))
         .addTo(map);
     };
 

@@ -14,12 +14,18 @@
   --ink-dim:    #C7C1B8;
   --ink-mute:   #8A857E;
   --ink-faint:  #5A554F;
-  --gold:       #FFB81C;
-  --gold-soft:  #F5C94A;
+  /* 2026 Draft palette nod — Warhol pop-art + Pittsburgh industrial
+     (teal + bright yellow primary pair; brick red, sky blue, magenta as accents) */
+  --gold:       #FFCE1F;   /* brighter yellow, Warhol silkscreen feel */
+  --gold-soft:  #FFE280;
   --gold-deep:  #C99210;
-  --steel:      #5EA3C7;
+  --teal:       #00B6B0;   /* pop-teal, primary cool accent */
+  --teal-soft:  #3DD3CE;
+  --teal-deep:  #007672;
+  --steel:      #5EA3C7;   /* sky blue — light rail */
   --river:      #3C7A9A;
-  --rust:       #D96846;
+  --rust:       #C8352D;   /* brick red — incidents, urgency */
+  --magenta:    #E83E8C;   /* pop-pink accent, sparing use */
   --moss:       #7FAA6B;
   --plum:       #9E6FB0;
 
@@ -54,16 +60,28 @@ html, body {
 
 /* ── MapLibre popup ─────────────────────────────────────────────────────────── */
 .maplibregl-popup-content {
-  background: var(--bg-2);
-  color: var(--ink);
+  background: var(--bg-1);
+  color: var(--ink-dim);
   border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.5);
-  font-family: var(--font-inter, sans-serif);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.65);
+  font-family: var(--font-inter, 'Inter', sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
 }
-.maplibregl-popup-tip { border-top-color: var(--bg-2); }
-.maplibregl-popup-close-button { color: var(--ink-mute); font-size: 16px; padding: 4px 6px; }
+/* All four tip directions */
+.maplibregl-popup-tip                  { border-top-color:    var(--bg-1); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color:    var(--bg-1); }
+.maplibregl-popup-anchor-top    .maplibregl-popup-tip { border-bottom-color: var(--bg-1); }
+.maplibregl-popup-anchor-left   .maplibregl-popup-tip { border-right-color:  var(--bg-1); }
+.maplibregl-popup-anchor-right  .maplibregl-popup-tip { border-left-color:   var(--bg-1); }
+
+.maplibregl-popup-close-button {
+  color: var(--ink-mute); font-size: 18px; line-height: 1;
+  padding: 5px 8px; border-radius: 0 10px 0 0;
+  background: transparent; transition: color .12s;
+}
 .maplibregl-popup-close-button:hover { color: var(--ink); background: transparent; }
 
 /* ── MapLibre attribution ───────────────────────────────────────────────────── */
@@ -91,6 +109,15 @@ html, body {
   width: max-content;
 }
 .ticker-track:hover { animation-play-state: paused; }
+
+.ticker-item {
+  display: inline-flex; align-items: center; gap: 12px; font-size: 12px;
+  text-decoration: none; cursor: pointer;
+  padding: 2px 4px; border-radius: 3px;
+  transition: background .15s;
+}
+.ticker-item:hover { background: rgba(255,206,31,.08); }
+.ticker-item:hover span:nth-child(2) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── Gauge fill ─────────────────────────────────────────────────────────────── */
 .gauge-bar  { position: relative; height: 7px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
@@ -125,6 +152,79 @@ html, body {
   border-radius: 12px; max-width: 700px; width: 100%;
   max-height: 85vh; overflow: hidden; display: flex; flex-direction: column;
   box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
+
+/* ── Top-bar responsive hides ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .topbar-subtitle,
+  .topbar-date-chip,
+  .topbar-divider,
+  .topbar-clock { display: none !important; }
+  .topbar-about { padding: 4px 9px !important; font-size: 10.5px !important; }
+}
+
+/* ── Responsive side-panel ──────────────────────────────────────────────────
+   Desktop: right-docked 368px aside.
+   ≤900px : collapse into a bottom sheet. Default closed (map first);
+            drag-handle header + tap to expand. */
+
+.pgh-shell { display: flex; flex: 1; overflow: hidden; position: relative; }
+.pgh-map   { flex: 1; position: relative; min-width: 0; }
+.pgh-aside {
+  width: 368px; flex-shrink: 0;
+  background: var(--bg-1);
+  border-left: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  padding: 14px; gap: 14px; overflow-y: auto;
+}
+
+/* Handle only appears on mobile */
+.pgh-sheet-handle { display: none; }
+
+@media (max-width: 900px) {
+  .pgh-shell   { flex-direction: column; }
+  .pgh-map     { flex: 1 1 auto; height: 100%; }
+
+  .pgh-aside {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    width: auto; max-height: 62vh;
+    border-left: none;
+    border-top: 1px solid var(--line-2);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 32px rgba(0,0,0,.5);
+    transition: transform .28s cubic-bezier(.22,.9,.3,1.2);
+    transform: translateY(calc(100% - 86px));  /* peek the top 86px of panel */
+    z-index: 6;
+    padding-top: 8px;
+  }
+  .pgh-aside.open { transform: translateY(0); }
+
+  .pgh-sheet-handle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 16px 10px; cursor: pointer; user-select: none;
+    position: sticky; top: 0; background: var(--bg-1); z-index: 2;
+    border-bottom: 1px solid var(--line);
+    margin: -8px -14px 8px;
+  }
+  .pgh-sheet-handle::before {
+    content: ''; position: absolute; left: 50%; top: 4px;
+    width: 36px; height: 4px; border-radius: 999px; background: var(--line-2);
+    transform: translateX(-50%);
+  }
+  .pgh-sheet-handle .ctx-title {
+    font-size: 12px; font-weight: 600; color: var(--ink);
+    letter-spacing: .02em;
+  }
+  .pgh-sheet-handle .ctx-caret {
+    font-size: 13px; color: var(--ink-mute); font-weight: 600;
+    transition: transform .28s;
+  }
+  .pgh-aside.open .pgh-sheet-handle .ctx-caret { transform: rotate(180deg); }
+}
+
+/* hide the city-wide legend on narrow screens; pills in panel are enough */
+@media (max-width: 900px) {
+  .pgh-map-legend { display: none; }
 }
 
 /* ── Landmark marker ────────────────────────────────────────────────────────── */
