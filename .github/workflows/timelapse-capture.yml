@@ -1,0 +1,42 @@
+name: Timelapse Capture
+
+# Fires every 15 minutes during draft weekend (Apr 23–25 EDT = UTC-4).
+# Draft hours: Thu 7 PM–midnight, Fri 6 PM–midnight, Sat noon–8 PM.
+# We run broadly across all draft days to be safe.
+#
+# Requires one GitHub secret:
+#   TIMELAPSE_ENDPOINT — the full capture URL, e.g.:
+#     https://pgh-draft-dashboard.vercel.app/api/timelapse/capture
+#
+# Optional:
+#   CRON_SECRET — must match CRON_SECRET env var on Vercel if you set one
+
+on:
+  schedule:
+    # Every 15 min, Thu Apr 23 through Sat Apr 26 (UTC)
+    # GitHub Actions cron uses UTC; EDT = UTC-4.
+    # Thu draft (8 PM–midnight EDT) = Fri 00:00–04:00 UTC
+    - cron: '0,15,30,45 0-4 24 4 *'
+    # Fri draft (7 PM–midnight EDT) = Sat 23:00–03:00 UTC
+    - cron: '0,15,30,45 23 25 4 *'
+    - cron: '0,15,30,45 0-3 26 4 *'
+    # Sat draft (noon–8 PM EDT) = Sat 16:00–midnight UTC
+    - cron: '0,15,30,45 16-23 26 4 *'
+  # Manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger timelapse frame capture
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.TIMELAPSE_ENDPOINT }}")
+          echo "HTTP status: $HTTP_STATUS"
+          cat /tmp/response.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Capture failed with status $HTTP_STATUS"
+            exit 1
+          fi
