@@ -11,9 +11,63 @@ import { PITTSBURGH_CENTER, PITTSBURGH_ZOOM, MAP_BOUNDS } from '@/lib/bounds';
 // Get a free key (no credit card) at https://protomaps.com/dashboard
 const PROTOMAPS_KEY = process.env.NEXT_PUBLIC_PROTOMAPS_KEY;
 
+/**
+ * Post-process Protomaps dark layers so icons dominate:
+ * - Road labels hidden below zoom 14 (city-scale view is icon-first)
+ * - Road lines dimmed ~30% so they read as infrastructure, not foreground
+ * - Building fills darkened to near-black so they don't compete with chips
+ * - POI / place labels kept for navigation context
+ */
+function tuneBaseLayers(baseLayers: maplibregl.LayerSpecification[]): maplibregl.LayerSpecification[] {
+  return baseLayers.map(layer => {
+    const id = layer.id ?? '';
+
+    // Hide street-level road labels at city zoom — they crowd icon chips
+    if (layer.type === 'symbol' && (id.includes('road') || id.includes('street') || id.includes('path'))) {
+      return {
+        ...layer,
+        layout: {
+          ...(layer as maplibregl.SymbolLayerSpecification).layout,
+          visibility: 'visible',
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 0,   // invisible at city zoom
+            14, ((layer as maplibregl.SymbolLayerSpecification).layout?.['text-size'] as number) ?? 11,
+          ],
+        },
+      };
+    }
+
+    // Dim road line layers — reduce opacity so roads read as structure, not foreground
+    if (layer.type === 'line' && (id.includes('road') || id.includes('street') || id.includes('tunnel') || id.includes('bridge'))) {
+      return {
+        ...layer,
+        paint: {
+          ...(layer as maplibregl.LineLayerSpecification).paint,
+          'line-opacity': 0.45,
+        },
+      };
+    }
+
+    // Darken building fills so icon chips pop off them
+    if (layer.type === 'fill' && id.includes('building')) {
+      return {
+        ...layer,
+        paint: {
+          ...(layer as maplibregl.FillLayerSpecification).paint,
+          'fill-color': '#0A090C',
+          'fill-opacity': 0.9,
+        },
+      };
+    }
+
+    return layer;
+  });
+}
+
 function buildMapStyle(): maplibregl.StyleSpecification {
   if (PROTOMAPS_KEY) {
-    // Full Protomaps vector tiles — labels, roads, buildings
+    const baseLayers = layers('protomaps', namedFlavor('dark'));
     return {
       version: 8,
       glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
@@ -25,23 +79,38 @@ function buildMapStyle(): maplibregl.StyleSpecification {
           attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
         },
       },
-      layers: layers('protomaps', namedFlavor('dark')),
+      layers: tuneBaseLayers(baseLayers),
     } as unknown as maplibregl.StyleSpecification;
   }
 
-  // Fallback: MapLibre demo raster tiles (no key needed, dev only)
+  // Fallback: CartoDB Dark Matter — free dark raster, no API key needed.
+  // Much better contrast for colored data icons than bright OSM tiles.
   return {
     version: 8,
     sources: {
-      osm: {
+      carto: {
         type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tiles: [
+          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        ],
         tileSize: 256,
-        attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+        attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> © <a href="https://carto.com">CARTO</a>',
         maxzoom: 19,
       },
     },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+    layers: [{
+      id: 'carto-dark',
+      type: 'raster',
+      source: 'carto',
+      paint: {
+        // Slightly lighter than full Dark Matter so street labels
+        // stay legible while icon chips still dominate.
+        'raster-brightness-max': 0.92,
+        'raster-saturation': -0.05,
+      },
+    }],
   };
 }
 
