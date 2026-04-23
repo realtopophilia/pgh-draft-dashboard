@@ -8,7 +8,8 @@ import { NextResponse } from 'next/server';
 import { put }          from '@vercel/blob';
 import { ImageResponse } from 'next/og';
 
-export const runtime = 'edge';
+// Node.js serverless runtime — more compatible than edge for ImageResponse + Blob
+// export const runtime = 'edge';
 
 const W = 960;
 const H = 540;
@@ -23,9 +24,9 @@ function latToY(lat: number) {
 
 async function fetchFeeds(baseUrl: string) {
   const [transit, parking, incidents] = await Promise.allSettled([
-    fetch(`${baseUrl}/api/transit/vehicles`,      { signal: AbortSignal.timeout(8000) }).then(r => r.json()),
-    fetch(`${baseUrl}/api/parking`,               { signal: AbortSignal.timeout(8000) }).then(r => r.json()),
-    fetch(`${baseUrl}/api/traffic/incidents`,     { signal: AbortSignal.timeout(8000) }).then(r => r.json()),
+    fetch(`${baseUrl}/api/transit/vehicles`).then(r => r.json()),
+    fetch(`${baseUrl}/api/parking`).then(r => r.json()),
+    fetch(`${baseUrl}/api/traffic/incidents`).then(r => r.json()),
   ]);
   return {
     vehicles:  transit.status   === 'fulfilled' ? (transit.value.vehicles   ?? []) : [],
